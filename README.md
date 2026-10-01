@@ -31,7 +31,7 @@ The project is built to answer three practical questions:
 - **Production deployment:** React frontend on Vercel and Python API on Render
 - **Responsive experience:** usable across desktop and mobile screens
 
-## Production application
+## What the project does
 
 - **Frontend:** [React + Vite on Vercel](https://volve-equipment-failure-prediction.vercel.app/)
 - **API:** [FastAPI on Render](https://volve-equipment-failure-prediction.onrender.com)
@@ -74,7 +74,7 @@ For explainability, the API uses **SHAP TreeExplainer** to calculate feature imp
 
 Generative AI and LLM/NLP components are intentionally excluded from the inference path. This keeps predictions deterministic, avoids hallucinated explanations, and supports predictable latency in an industrial, safety-sensitive environment.
 
-## What the project does
+### Detection inputs
 
 The model evaluates five measurements together:
 
@@ -90,13 +90,50 @@ Isolation Forest learns the normal operating patterns in the reference data. A n
 
 The application also calculates SHAP values for each prediction. SHAP ranks how strongly each feature influenced the individual result, helping users understand why a condition was classified as normal or unusual.
 
-## Core features
+## Why the project is useful
 
 - **Live Telemetry Stream:** simulated downhole conditions replayed at approximately 1 Hz through a WebSocket.
 - **Root Cause Diagnostics:** dynamic SHAP rendering explains which features influenced each prediction.
 - **What-If Simulator:** a REST API endpoint lets engineers test hypothetical Weight on Bit (WOB), RPM, and feature changes.
 
 Additional dashboard capabilities include live trend charts, anomaly counts, automatic live-baseline simulation, manual feature overrides, responsive layouts, and clickable plain-language feature explanations.
+
+## How to get started
+
+### Prerequisites
+
+- Python 3.13+
+- Node.js and npm
+- Git
+
+### Installation and local usage
+
+```powershell
+git clone https://github.com/fakebaconpancakes/Volve_Equipment_Failure_Prediction.git
+Set-Location Volve_Equipment_Failure_Prediction
+pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+In a second terminal:
+
+```powershell
+Set-Location frontend
+npm install
+npm run dev
+```
+
+Open the local Vite URL shown in the terminal, usually `http://localhost:5173`.
+
+For the deployed version, use the [live Vercel demo](https://volve-equipment-failure-prediction.vercel.app/). The API is hosted separately on [Render](https://volve-equipment-failure-prediction.onrender.com), with interactive documentation at [Render API docs](https://volve-equipment-failure-prediction.onrender.com/docs).
+
+### Validation
+
+```powershell
+Set-Location frontend
+npm run lint
+npm run build
+```
 
 ## Repository structure
 
@@ -118,168 +155,30 @@ Additional dashboard capabilities include live trend charts, anomaly counts, aut
 └── experiment.ipynb
 ```
 
-## Run the API locally
+## Architecture and deployment
 
-Create or activate the Python environment, then install the dependencies:
-
-```powershell
-conda activate slb_drill
-pip install -r requirements.txt
-```
-
-Start the FastAPI server from the repository root:
-
-```powershell
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
-The local API is available at:
-
-- API documentation: http://localhost:8000/docs
-- Simulation endpoint: http://localhost:8000/api/simulate
-- Telemetry WebSocket: ws://localhost:8000/ws/telemetry
-
-## Run the frontend locally
-
-In a second terminal:
-
-```powershell
-Set-Location frontend
-npm install
-npm run dev
-```
-
-Vite will print the local frontend URL, usually http://localhost:5173.
-
-To validate the frontend:
-
-```powershell
-npm run lint
-npm run build
-```
-
-### Recruiter quickstart
-
-```powershell
-git clone https://github.com/fakebaconpancakes/Volve_Equipment_Failure_Prediction.git
-Set-Location Volve_Equipment_Failure_Prediction
-pip install -r requirements.txt
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
-In a second terminal:
-
-```powershell
-Set-Location frontend
-npm install
-npm run dev
-```
-
-## API contract
-
-### `GET /docs`
-
-FastAPI's interactive API documentation.
-
-### `WS /ws/telemetry`
-
-Streams one telemetry object approximately every second. Each message includes:
-
-```json
-{
-  "time": "2026-01-01 00:00:00",
-  "mse": 1344.0,
-  "torque_variance": 0.12,
-  "pressure_variance": 0.08,
-  "torque": 100.0,
-  "stick_slip": 21.0,
-  "shock_peak": 2.0,
-  "status": "Normal",
-  "root_cause": "N/A",
-  "shap": []
-}
-```
-
-The `shap` array contains the feature name, supplied value, signed impact, and absolute impact.
-
-### `POST /api/simulate`
-
-Example request:
-
-```json
-{
-  "wob": 25,
-  "rpm": 120,
-  "torque": 100,
-  "torque_variance": 0.12,
-  "pressure_variance": 0.08,
-  "stick_slip": 21,
-  "shock_peak": 2,
-  "manual_features": false
-}
-```
-
-Automatic mode calculates hypothetical MSE from WOB, RPM, and torque. Manual mode sets `"manual_features": true` and supplies `"mse"` to override the calculated MSE.
-
-## Deploying the API to Render
-
-Create a Render **Web Service** connected to this GitHub repository with:
+The application uses a decoupled frontend/backend deployment:
 
 | Setting | Value |
 | --- | --- |
-| Runtime | Python |
-| Build command | `pip install -r requirements.txt` |
-| Start command | `uvicorn main:app --host 0.0.0.0 --port $PORT` |
-| Health/check URL | `/docs` |
+| Frontend | Vercel, using `frontend` as the project root |
+| Backend | Render Web Service running `uvicorn main:app --host 0.0.0.0 --port $PORT` |
+| API dependencies | `requirements.txt` |
+| Frontend build | `npm run build`, output directory `dist` |
 
-Render must have access to:
+The Render service must include the trained model and telemetry data under `models/` and `data/`. Render may pause an inactive free service, so its first request can take longer while it wakes up.
 
-- `main.py`
-- `requirements.txt`
-- `models/isolation_forest.pkl`
-- `data/rig_telemetry_drill.csv`
+## Where to get help
 
-After deployment, verify the API documentation at:
+- Read the [interactive API documentation](https://volve-equipment-failure-prediction.onrender.com/docs).
+- Open a [GitHub issue](https://github.com/fakebaconpancakes/Volve_Equipment_Failure_Prediction/issues) for bugs or feature requests.
+- Check the [live demo](https://volve-equipment-failure-prediction.vercel.app/) to reproduce frontend behaviour.
 
-https://volve-equipment-failure-prediction.onrender.com/docs
+## Maintainer and contributions
 
-Render may pause an inactive free service. The first request after inactivity can take longer while the API wakes up.
+Maintained by [@fakebaconpancakes](https://github.com/fakebaconpancakes).
 
-## Deploying the frontend to Vercel
-
-Import the `frontend` directory as the Vercel project root, or configure the Vercel project so its root directory is `frontend`.
-
-Recommended settings:
-
-| Setting | Value |
-| --- | --- |
-| Framework preset | Vite |
-| Install command | `npm install` |
-| Build command | `npm run build` |
-| Output directory | `dist` |
-
-The frontend uses the Render API URL:
-
-```text
-https://volve-equipment-failure-prediction.onrender.com
-```
-
-If the API URL is moved to an environment variable in the future, add this Vercel project variable:
-
-```text
-VITE_API_URL=https://volve-equipment-failure-prediction.onrender.com
-```
-
-Redeploy Vercel after changing the API URL or frontend code.
-
-## Production checklist
-
-- Confirm the Render `/docs` page loads.
-- Confirm `POST /api/simulate` returns a prediction and SHAP results.
-- Confirm the WebSocket stream is reachable from the Vercel domain.
-- Confirm the browser console has no CORS or WebSocket errors.
-- Run `npm run lint` and `npm run build` before deploying frontend changes.
-- Keep the model, telemetry CSV, and Python dependency versions synchronized with the API deployment.
+Contributions are welcome. Please open an issue before larger changes, keep pull requests focused, and run `npm run lint` and `npm run build` before submitting frontend changes. For backend changes, verify the FastAPI service and model endpoints locally.
 
 ## Limitations
 
