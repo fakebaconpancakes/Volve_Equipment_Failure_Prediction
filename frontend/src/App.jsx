@@ -43,6 +43,14 @@ const metricConfig = [
   },
 ];
 
+const shapHelp = {
+  MSE: 'Mechanical specific energy: the energy used to remove rock. An unusual value can suggest inefficient drilling or changing downhole conditions.',
+  Torque_Variance: 'Torque variance: how much rotary torque changes. High variation can point to friction changes, irregular cutting, or instability.',
+  Pressure_Variance: 'Pressure variance: how much drilling pressure changes. Unexpected variation can indicate unstable circulation or changing downhole conditions.',
+  'MWD Stick-Slip PKtoPK RPM rpm': 'Stick-slip: downhole speed oscillation where the drill string alternately sticks and slips. High values can increase mechanical loading.',
+  'MWD Shock Peak m/s2': 'Shock peak: the highest measured downhole acceleration. High shocks can expose the bit and tools to damaging impacts.',
+};
+
 function getTrend(data, key) {
   if (data.length < 2) return 'steady';
   const current = Number(data.at(-1)[key]);
@@ -117,12 +125,49 @@ function MetricChart({ metric, data }) {
   );
 }
 
+function ShapResults({ values, compact = false }) {
+  const [selectedFeature, setSelectedFeature] = useState(null);
+  if (!values?.length) return null;
+
+  return (
+    <div className={`shap-grid ${compact ? 'shap-grid--compact' : ''}`}>
+      {[...values].sort((a, b) => b.abs_impact - a.abs_impact).map((item) => (
+        <button
+          className={`shap-card ${selectedFeature === item.feature ? 'shap-card--active' : ''}`}
+          key={item.feature}
+          type="button"
+          onClick={() => setSelectedFeature(selectedFeature === item.feature ? null : item.feature)}
+          aria-expanded={selectedFeature === item.feature}
+        >
+          <div className="shap-card__heading">
+            <strong>{item.feature}</strong>
+            <span>{item.impact >= 0 ? '+' : ''}{item.impact.toFixed(3)}</span>
+          </div>
+          <div className="shap-bar"><span style={{ width: `${Math.min(item.abs_impact * 100, 100)}%` }} /></div>
+          <small>Observed value: {item.value.toFixed(3)}</small>
+          {selectedFeature === item.feature && (
+            <span className="shap-card__explanation">{shapHelp[item.feature] || 'This feature contributed to the model prediction shown above.'}</span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   const [telemetry, setTelemetry] = useState([]);
   const [systemStatus, setSystemStatus] = useState('Connecting to rig');
   const [isAnomaly, setIsAnomaly] = useState(false);
   const [simWob, setSimWob] = useState(25);
   const [simRpm, setSimRpm] = useState(120);
+  const [manualFeatures, setManualFeatures] = useState(false);
+  const [simFeatures, setSimFeatures] = useState({
+    mse: 0,
+    torque_variance: 0,
+    pressure_variance: 0,
+    stick_slip: 0,
+    shock_peak: 0,
+  });
   const [simResult, setSimResult] = useState(null);
   const [isSimulating, setIsSimulating] = useState(false);
 
@@ -141,10 +186,33 @@ export default function App() {
   }, []);
 
   const latest = telemetry.at(-1);
+  const isOnline = systemStatus === 'Live telemetry connected';
+  const connectionLabel = isOnline
+    ? 'Online'
+    : systemStatus === 'Connecting to rig'
+      ? 'Connecting'
+      : 'Offline';
   const anomalyCount = useMemo(
     () => telemetry.filter((point) => point.status === 'Critical Anomaly').length,
     [telemetry],
   );
+
+  const updateSimFeature = (key, value) => {
+    setSimFeatures((previous) => ({ ...previous, [key]: value }));
+  };
+
+  const toggleManualFeatures = (enabled) => {
+    if (enabled && latest) {
+      setSimFeatures({
+        mse: Number(latest.mse),
+        torque_variance: Number(latest.torque_variance),
+        pressure_variance: Number(latest.pressure_variance),
+        stick_slip: Number(latest.stick_slip),
+        shock_peak: Number(latest.shock_peak),
+      });
+    }
+    setManualFeatures(enabled);
+  };
 
   const runSimulation = async () => {
     if (!latest) return;
@@ -157,10 +225,12 @@ export default function App() {
           wob: Number(simWob),
           rpm: Number(simRpm),
           torque: latest.torque,
-          torque_variance: latest.torque_variance,
-          pressure_variance: latest.pressure_variance,
-          stick_slip: latest.stick_slip,
-          shock_peak: latest.shock_peak,
+          torque_variance: Number(simFeatures.torque_variance),
+          pressure_variance: Number(simFeatures.pressure_variance),
+          stick_slip: Number(simFeatures.stick_slip),
+          shock_peak: Number(simFeatures.shock_peak),
+          mse: Number(simFeatures.mse),
+          manual_features: manualFeatures,
         }),
       });
       if (!response.ok) throw new Error('Simulation request failed');
@@ -188,6 +258,51 @@ export default function App() {
       </nav>
 
       <div className="page-content">
+        <section className="intro-section section-block" aria-labelledby="intro-heading">
+          <div className="intro-hero">
+            <div>
+              <p className="section-kicker">00 / PROJECT GUIDE</p>
+              <h2 id="intro-heading">A digital twin for earlier drilling decisions.</h2>
+              <p className="intro-lead">
+                Monitors drilling data and flags unusual conditions early, before they become
+                harder-to-manage drilling problems.
+              </p>
+            </div>
+            <div className="intro-model-card">
+              <span className="eyebrow">CURRENT MODEL</span>
+              <strong>Isolation Forest</strong>
+              <small>Unsupervised anomaly detection</small>
+            </div>
+          </div>
+
+          <div className="intro-grid">
+            <article className="intro-card">
+              <span className="intro-card__number">01</span>
+              <h3>What are we predicting?</h3>
+              <p>
+                Predicts whether the current combination of drilling measurements looks
+                <strong> normal</strong> or <strong>unusual</strong> compared with the reference data.
+              </p>
+            </article>
+            <article className="intro-card">
+              <span className="intro-card__number">02</span>
+              <h3>What are we trying to avoid?</h3>
+              <p>
+                Early signs of inefficient drilling, unstable torque or pressure, stick-slip, and
+                damaging downhole shock.
+              </p>
+            </article>
+            <article className="intro-card">
+              <span className="intro-card__number">03</span>
+              <h3>How should the result be used?</h3>
+              <p>
+                Treat an alert as a prompt to investigate the live values and test a what-if
+                scenario. It is not a diagnosis.
+              </p>
+            </article>
+          </div>
+        </section>
+
         <section className="hero-section">
           <div className="hero-copy">
             <p className="section-kicker">DRILLING INTELLIGENCE / REAL-TIME MONITORING</p>
@@ -214,6 +329,22 @@ export default function App() {
               <div className="process-node"><span className={`node-status ${isAnomaly ? 'node-status--alarm' : ''}`} /><small>DOWNHOLE</small></div>
             </div>
             <div className="process-flow__footer"><span>FLOW PATH: SURFACE → BOTTOM HOLE</span><span>{latest?.status || 'NO ALARM'}</span></div>
+            <div className={`data-status data-status--${connectionLabel.toLowerCase()}`} role="status" aria-live="polite">
+              <div className={`drill-animation ${isOnline ? 'drill-animation--active' : ''}`} aria-hidden="true">
+                <svg viewBox="0 0 72 58" role="presentation">
+                  <path className="drill-animation__derrick" d="M8 48 28 7h16l20 41M18 28h36M13 38h46M28 7l8 41M44 7l-8 41" />
+                  <path className="drill-animation__platform" d="M4 49h64M25 54h22" />
+                  <path className="drill-animation__string" d="M36 7v39" />
+                  <path className="drill-animation__bit" d="m30 46 6 9 6-9M31 48h10" />
+                  <path className="drill-animation__signal" d="M51 13h5M53 18h8M55 23h11" />
+                </svg>
+              </div>
+              <div className="data-status__copy">
+                <span className="data-status__label">DATA LINK</span>
+                <strong>{connectionLabel}</strong>
+                <small>{isOnline ? 'The drill is sending live telemetry.' : systemStatus}</small>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -259,6 +390,48 @@ export default function App() {
             <span><i className={isAnomaly ? 'dot dot--alert' : 'dot'} /> Current model state: <strong>{latest?.status || 'Waiting for first sample'}</strong></span>
             <span>{anomalyCount} flagged sample{anomalyCount === 1 ? '' : 's'} in current window</span>
           </div>
+          <div className="live-guide">
+            <div>
+              <strong>Features used by the model</strong>
+              <span><b>MSE</b> drilling energy · <b>Torque variance</b> rotary stability · <b>Pressure variance</b> pressure stability · <b>Stick-slip</b> speed oscillation · <b>Shock peak</b> downhole impact</span>
+            </div>
+          </div>
+          {latest?.shap?.length > 0 && (
+            <div className="live-explanation">
+              <div className="live-explanation__heading">
+                <div>
+                  <p className="section-kicker">WHY THIS STATE?</p>
+                  <h3>
+                    Features influencing the prediction
+                    <span className="help-tooltip" tabIndex="0" aria-label="Why SHAP is important">
+                      ?
+                      <span className="help-tooltip__content">
+                        SHAP shows which features had the most influence on this individual
+                        prediction. It helps explain an alert, rather than proving its cause.
+                      </span>
+                    </span>
+                  </h3>
+                </div>
+                <span className="simulator-badge">SHAP FEATURE IMPACT</span>
+              </div>
+              <p className="explanation-note">
+                Larger bars mean more influence on this result. This explains the model’s
+                decision, but does not prove a feature caused the condition.
+              </p>
+              <ShapResults values={latest.shap} />
+            </div>
+          )}
+          <div className={`live-state ${isAnomaly ? 'live-state--alert' : ''}`}>
+            <div>
+              <span className="eyebrow">CURRENT MODEL STATE</span>
+              <strong>{latest?.status || 'Waiting for telemetry'}</strong>
+            </div>
+            <p>
+              {latest?.status === 'Critical Anomaly'
+                ? 'This combination is unusual compared with the reference data. The feature impacts above show what influenced the alert most.'
+                : 'This combination looks normal compared with the reference data. The feature impacts above show what influenced this result.'}
+            </p>
+          </div>
         </section>
 
         <section className="simulator-section section-block" aria-labelledby="simulator-heading">
@@ -272,11 +445,31 @@ export default function App() {
           <div className="simulator-layout">
             <div className="simulator-explanation">
               <p>
-                Explore how a change in surface controls could affect drilling stability before
-                applying it to the rig. The simulator combines your hypothetical weight on bit
-                and rotary speed with the latest live variances, then runs the same anomaly model
-                used by the live monitor.
+                Test a change without affecting the live stream. The simulator runs the same
+                Isolation Forest model used by the monitor.
               </p>
+              <div className="control-guide">
+                <div>
+                  <strong>Weight on bit (WOB)</strong>
+                  <span>How much force pushes the bit into the rock. Increasing it can improve
+                    drilling, but an unusual force for the current RPM and formation may raise
+                    MSE, torque, or vibration.</span>
+                </div>
+                <div>
+                  <strong>Rotary speed (RPM)</strong>
+                  <span>How fast the drill string turns. Changing it changes energy and contact
+                    at the bit; an unusual speed can interact with WOB and create unstable
+                    torque, stick-slip, or shock.</span>
+                </div>
+              </div>
+              <p className="simulator-tip">
+                Most WOB and RPM changes will remain normal. An anomaly is more likely when their
+                combination creates an unusual pattern across the other features.
+              </p>
+              <div className="mode-quick-guide">
+                <div><strong>Automatic</strong><span>Uses the latest telemetry. Change WOB and RPM to test a live-baseline scenario.</span></div>
+                <div><strong>Manual</strong><span>Edit all five model inputs to create and test your own condition.</span></div>
+              </div>
               <div className="how-it-works">
                 <div><span>01</span><strong>Adjust</strong><small>Set WOB and RPM</small></div>
                 <div><span>02</span><strong>Estimate</strong><small>Calculate hypothetical MSE</small></div>
@@ -294,6 +487,45 @@ export default function App() {
                 <input type="range" min="60" max="200" value={simRpm} onChange={(event) => setSimRpm(event.target.value)} />
                 <div className="range-labels"><span>60</span><span>200 RPM</span></div>
               </div>
+              <label className="feature-toggle">
+                <input
+                  type="checkbox"
+                  checked={manualFeatures}
+                  onChange={(event) => toggleManualFeatures(event.target.checked)}
+                />
+                <span className="toggle-track" aria-hidden="true"><span /></span>
+                <span>
+                  <strong>Manual feature override</strong>
+                  <small>{manualFeatures ? 'Edit the model inputs below' : 'Use the latest live telemetry'}</small>
+                </span>
+              </label>
+              {manualFeatures && (
+                <div className="manual-features">
+                  {[
+                    ['mse', 'MSE', 'kJ/m³', 0, 10000, 0.1],
+                    ['torque_variance', 'Torque variance', 'variance', 0, 10, 0.001],
+                    ['pressure_variance', 'Pressure variance', 'variance', 0, 10, 0.001],
+                    ['stick_slip', 'Stick-slip', 'RPM', 0, 100, 0.1],
+                    ['shock_peak', 'Shock peak', 'm/s²', 0, 100, 0.1],
+                  ].map(([key, label, unit, min, max, step]) => (
+                    <div className="manual-feature" key={key}>
+                      <label htmlFor={`sim-${key}`}>{label}</label>
+                      <div>
+                        <input
+                          id={`sim-${key}`}
+                          type="number"
+                          min={min}
+                          max={max}
+                          step={step}
+                          value={simFeatures[key]}
+                          onChange={(event) => updateSimFeature(key, event.target.value)}
+                        />
+                        <span>{unit}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <button className="simulate-button" onClick={runSimulation} disabled={!latest || isSimulating}>
                 {isSimulating ? 'Running model...' : 'Run what-if scenario'}
                 <span>→</span>
@@ -306,6 +538,11 @@ export default function App() {
                     <>
                       <div><span>Predicted outcome</span><strong>{simResult.status}</strong></div>
                       <div><span>Hypothetical MSE</span><strong>{simResult.hypothetical_mse.toFixed(1)} <small>kJ/m³</small></strong></div>
+                      <div className="simulation-result__wide"><span>Primary driver</span><strong>{simResult.root_cause}</strong></div>
+                      <div className="simulation-result__wide">
+                        <span>Feature impact</span>
+                        <ShapResults values={simResult.shap} compact />
+                      </div>
                     </>
                   )}
                 </div>
