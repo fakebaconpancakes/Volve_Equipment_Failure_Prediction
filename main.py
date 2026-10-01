@@ -4,6 +4,7 @@ import pandas as pd
 import joblib
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 app = FastAPI(title="Drilling Digital Twin API")
 
@@ -36,6 +37,9 @@ async def stream_telemetry(websocket: WebSocket):
                     "mse": float(row["MSE"]),
                     "torque_variance": float(row["Torque_Variance"]),
                     "pressure_variance": float(row["Pressure_Variance"]),
+                    "torque": float(row["Average Surface Torque kN.m"]),
+                    "stick_slip": float(row["MWD Stick-Slip PKtoPK RPM rpm"]),
+                    "shock_peak": float(row["MWD Shock Peak m/s2"]),
                     "status": "Critical Anomaly" if prediction == -1 else "Normal"
                 }
             await websocket.send_text(json.dumps(payload))
@@ -43,3 +47,36 @@ async def stream_telemetry(websocket: WebSocket):
 
     except Exception as e:
         print("Client Disconnected.")
+
+# Building the simulator
+class SimulationRequest(BaseModel):
+    wob: float
+    rpm: float
+    torque: float
+    torque_variance: float
+    pressure_variance: float
+    stick_slip: float
+    shock_peak:float
+
+@app.post("/api/simulate")
+async def run_simulation(req: SimulationRequest):
+    # MSE
+    bit_size = 8.5
+    hypothetical_mse = req.wob + (120 * req.rpm * req.torque) / (bit_size ** 2)
+
+    #Features chosenn for model
+    X_sim = pd.DataFrame([[
+        hypothetical_mse, 
+        req.torque_variance, 
+        req.pressure_variance, 
+        req.stick_slip, 
+        req.shock_peak
+    ]], columns=features)
+
+    #predict
+    prediction = model.predict(X_sim)[0]
+    
+    return {
+        "hypothetical_mse": hypothetical_mse,
+        "status": "Critical Anomaly" if prediction == -1 else "Normal"
+    }
