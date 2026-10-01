@@ -174,12 +174,6 @@ The Render service must include the trained model and telemetry data under `mode
 - Open a [GitHub issue](https://github.com/fakebaconpancakes/Volve_Equipment_Failure_Prediction/issues) for bugs or feature requests.
 - Check the [live demo](https://volve-equipment-failure-prediction.vercel.app/) to reproduce frontend behaviour.
 
-## Maintainer and contributions
-
-Maintained by [@fakebaconpancakes](https://github.com/fakebaconpancakes).
-
-Contributions are welcome. Please open an issue before larger changes, keep pull requests focused, and run `npm run lint` and `npm run build` before submitting frontend changes. For backend changes, verify the FastAPI service and model endpoints locally.
-
 ## Limitations
 
 - The current WebSocket stream replays the telemetry CSV rather than receiving a live rig feed.
