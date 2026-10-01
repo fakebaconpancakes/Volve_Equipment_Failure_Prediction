@@ -10,7 +10,7 @@ import {
 } from 'recharts';
 import './App.css';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = 'https://volve-equipment-failure-prediction.onrender.com';
 const MAX_POINTS = 36;
 
 const metricConfig = [
